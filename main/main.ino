@@ -1,17 +1,32 @@
 
 // LIBRARY
 #include <Wire.h> 
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal.h>
 
 //DEFINITIONS
 #define MAX_RPM 7000
 #define MAX_DUTY 85
 
-unsigned int pin_output = 5; // pin 5 to the injector n1
-unsigned int led_1 = 6;      // LED for the injector pulse
-const int analogPin = A0;    // For the potentiometer
-const int next_button = 2;    // For the next button
-const int ok_button = 3;      // For the ok button
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);           // select the pins used on the LCD panel
+
+// define some values used by the panel and buttons
+int lcd_key     = 0;
+int adc_key_in  = 0;
+
+#define btnRIGHT  0
+#define btnUP     1
+#define btnDOWN   2
+#define btnLEFT   3
+#define btnSELECT 4
+#define btnNONE   5
+
+#define FREQUENCY_MENU   0
+#define DUTY_CYCLE_MENU  1
+#define TEST_LENGTH_MENU 2
+#define TEST_RUN_MENU    3
+
+unsigned int dPin_injector = 1; // pin 5 to the injector n1
+unsigned int dPin_injector_led = 2;      // LED for the injector pulse
 
 //VARS
  int selector_menu=0;
@@ -30,43 +45,44 @@ const int ok_button = 3;      // For the ok button
   B10000
  } ;
 
-// i2c LCD
-LiquidCrystal_I2C lcd(0x3F,16,2);  //For my 12x2 LCD i2c screen
+int read_LCD_buttons(){               // read the buttons
+    adc_key_in = analogRead(0);       // read the value from the sensor 
+
+    // my buttons when read are centered at these valies: 0, 144, 329, 504, 741
+    // we add approx 50 to those values and check to see if we are close
+    // We make this the 1st option for speed reasons since it will be the most likely result
+
+    if (adc_key_in > 1000) return btnNONE; 
+
+    // For V1.1 us this threshold
+    if (adc_key_in < 50)   return btnRIGHT;  
+    if (adc_key_in < 250)  return btnUP; 
+    if (adc_key_in < 450)  return btnDOWN; 
+    if (adc_key_in < 650)  return btnLEFT; 
+    if (adc_key_in < 850)  return btnSELECT;  
+
+    return btnNONE;                // when all others fail, return this.
+}
 
 // ------------------------------------------------------------------
 
 void setup() {
-  // VARS
-  
- 
+  pinMode(dPin_injector, OUTPUT);    // pin 2 as an output
+  digitalWrite(dPin_injector, LOW);
 
+  pinMode(dPin_injector_led, OUTPUT);
+  digitalWrite(dPin_injector_led, LOW);
 
-  //CODE
-  Serial.begin(9600); // open the serial port at 9600 bps:
-  
-  pinMode(pin_output, OUTPUT);    // pin 2 as an output
-  digitalWrite(pin_output, LOW);
+  hz_value = 30;
+  test_secs = 10;
+  duty_cycle = 20;
 
-  pinMode(led_1, OUTPUT);
-  digitalWrite(led_1, LOW);
-
-  pinMode(next_button, INPUT);
-  pinMode(ok_button, INPUT);
-
-  //attachInterrupt(digitalPinToInterrupt(next_button), add_next_button, RISING);
-  //attachInterrupt(digitalPinToInterrupt(ok_button), add_ok_button, RISING);
-
-  //Inicializate the LCD
-  lcd.init();
-  // Turn on the backligth screen
-  lcd.backlight();
-  // Print in the Screen:
+  lcd.begin(16, 2);               // start the library
   lcd.setCursor(2, 0);
-  lcd.print("Biohazard86");
+  lcd.print("Gumis91");
   lcd.setCursor(0, 1);
   lcd.print("Injector tester");
   delay(2500);  //Sleep 3 secs
-  lcd.createChar(0,selected_option);
   lcd.clear();
 }
 
@@ -128,12 +144,12 @@ void do_pulse(long int us_wait){
     Serial.print("\nMicros INIT\n");
     Serial.print(micros_init);
 
-    pinMode(pin_output, HIGH);
+    pinMode(dPin_injector, HIGH);
     Serial.print("\nGO HIGH\n");
     do{
       i = micros();
     }while( i < micros_end );
-    pinMode(pin_output, LOW);
+    pinMode(dPin_injector, LOW);
     Serial.print("\nEXIT HIGH\n");
     
     
@@ -254,60 +270,39 @@ void test(int secs, int hz, int rpm, int dc){
   unsigned long time_start_test, time_end;
   double ms;
   int ms_high, ms_low;
-  long int send_us_low,send_us_high;
+  long int send_us_low, send_us_high;
   
   ms_high = (pow(hz, -1)*dc) * 10;  //miliseconds with the duty cycle correction (High signal)
-  ms_low= ((pow(hz, -1)*1000) - ms_high);      //miliseconds of the low signal of the cycle
+  ms_low = ((pow(hz, -1)*1000) - ms_high);      //miliseconds of the low signal of the cycle
   send_us_high = long(ms_high) * 1000;
   send_us_low = long(ms_low) * 1000;
-  
-  //Serial.print("\nHZ\n");
-  //Serial.print(hz);
-  //Serial.print("\nDC\n");
-  //Serial.print(dc);
 
-  //Serial.print("\nPOW\n");
-  //Serial.print((pow(hz, -1)*1000));
-  //Serial.print("\nSEND US \n");
-  //Serial.print(send_us_low);
-  //Serial.print("\nMS\n");
-  //Serial.print(ms_high);
-  //Serial.print("\nMS_LOW\n");
-  //Serial.print(ms_low);
-  
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("RUNNING TEST");
   lcd.setCursor(0, 1);
   lcd.print(secs);
-  lcd.setCursor(3, 1);
-  lcd.print("SECS");
+  lcd.setCursor(2, 1);
+  lcd.print("s");
+  lcd.setCursor(5, 1);
+  lcd.print(rpm);
+  lcd.print("rpm ");
+  lcd.print(dc);
+  lcd.print("%");
   
   time_start_test = micros();    // read the microseconds from the MCU
   time_end = time_start_test + (secs * 1000000);    // calc all the time of the test
 
-  //Serial.print("TIME START\n");
-  //Serial.print(time_start_test);
-  //Serial.print("TIME END\n");
-  //Serial.print(time_end); 
-  //lcd.clear();
-  
-  
-  do{
-    // if the time is 0 that is that is an infinite test
-    //if(secs == 0){
-    //  time_end = (micros() +1000);
-    //}
-      //Do a pulse of ms milisends in the pin 1
-      do_pulse(send_us_high);
-        // and wait ms_low ms to the next pulse
-      wait_ms(send_us_low);
-      
-      
-    }
-    while( (micros() < time_end ));
-    lcd.clear();
+  do
+  {
+    //Do a pulse of ms milisends in the pin 1
+    do_pulse(send_us_high);
+    // and wait ms_low ms to the next pulse
+    wait_ms(send_us_low);
   }
+  while( (micros() < time_end ));
+  lcd.clear();
+}
 
 
 // ------------------------------------------------------------------
@@ -363,7 +358,7 @@ int run_test_secs(int start_test, int hz_value, int rpm_engine, int duty_cycle, 
 // ------------------------------------------------------------------
 void show_menu(){
   lcd.setCursor(1, 0);
-  lcd.print("HZ ");
+  lcd.print("Hz");
   lcd.setCursor(4, 0);
   lcd.print(hz_value);
   
@@ -375,83 +370,164 @@ void show_menu(){
   lcd.print("%");
   //-------------------
   lcd.setCursor(1, 1);
-  lcd.print("T ");
+  lcd.print("T");
   lcd.setCursor(3, 1);
   lcd.print(test_secs);
   lcd.setCursor(5, 1);
   lcd.print("s");
   
-  lcd.setCursor(11, 1);
-  lcd.print("OK");
+  lcd.setCursor(10, 1);
+  lcd.print("RUN");
   }
 
+void modifySetting(int menuSelected, int delta)
+{
+  switch (menuSelected)
+  {
+    case FREQUENCY_MENU:
+      hz_value = (hz_value + delta) % 100;
+      if(hz_value < 0)
+      {
+        hz_value = 99;
+      }
+      delay(250);
+      break;
+          
+    case DUTY_CYCLE_MENU:
+      duty_cycle = (duty_cycle + delta) % 81;
+      if(duty_cycle < 0)
+      {
+        duty_cycle = 80;
+      }
+      delay(250);
+      break;
+
+    case TEST_LENGTH_MENU:
+      test_secs = (test_secs + delta) % 91;
+      if(test_secs < 0)
+      {
+        test_secs = 90;
+      }
+      delay(250);
+  }
+}
+
+void switchMenu(int direction)
+{
+  selector_menu = (selector_menu + direction) % 4;
+  if(selector_menu < 0)
+  {
+    selector_menu = 3;
+  }
+  delay(250);
+}
 // ------------------------------------------------------------------
 
-void loop() {
+void loop() 
+{
   int i;
   
   rpm_engine = hz_to_rpm_conversion();
   show_menu();
 
-  if(digitalRead(next_button) == HIGH){
-    selector_menu++;
-    delay(250);
+  lcd_key = read_LCD_buttons();
+  switch (lcd_key)
+  {
+    case btnRIGHT:
+    {
+      switchMenu(1);
+      break;
     }
+    case btnLEFT:
+    {
+      switchMenu(-1);
+      break;
+    }    
+    case btnUP:
+    {
+      modifySetting(selector_menu, 1);
+      break;
+    }
+    case btnDOWN:
+    {
+      modifySetting(selector_menu, -1);
+      break;
+    }
+  }
 
-    if(selector_menu == 4){
-      selector_menu = 0;
-      }
-//----------------------------------------
-   if(selector_menu == 0){
-      value = analogRead(analogPin); 
-      hz_value = map(value, 100, 1023, 0, 71);  // (MAX_RPM/60)
-      if(hz_value < 10){
+  switch (selector_menu)
+  {
+    case FREQUENCY_MENU:
+    {
+      if(hz_value < 10)
+      {
         lcd.setCursor(5, 0);
         lcd.print(" ");
-        }
-      if(hz_value < 0){
-        hz_value =0;
-        }
-      
       }
 
-//----------------------------------------
-    if(selector_menu == 1){
-      value = analogRead(analogPin); 
-      duty_cycle = map(value, 100, 1023, 0, 80);
-      if(duty_cycle < 10){
+      lcd.setCursor(0, 0);
+      lcd.print(">");
+      lcd.setCursor(9, 0);
+      lcd.print(" ");
+      lcd.setCursor(0, 1);
+      lcd.print(" ");
+      lcd.setCursor(9, 1);
+      lcd.print(" ");
+      break;
+    }
+
+    case DUTY_CYCLE_MENU:
+    {
+      if(duty_cycle < 10)
+      {
         lcd.setCursor(14, 0);
         lcd.print(" ");
-        }
-      if(duty_cycle < 0){
-        duty_cycle =0;
-        }
       }
+      lcd.setCursor(0, 0);
+      lcd.print(" ");
+      lcd.setCursor(9, 0);
+      lcd.print(">");
+      lcd.setCursor(0, 1);
+      lcd.print(" ");
+      lcd.setCursor(9, 1);
+      lcd.print(" ");
+      break;
+    }
 
-//----------------------------------------      
-    if(selector_menu == 2){
-      // Test duration
-      
-      value = analogRead(analogPin); 
-      test_secs = map(value, 100, 1020, 0, 61);
-      if(test_secs < 10){
+    case TEST_LENGTH_MENU:
+    {
+      if(test_secs < 10)
+      {
         lcd.setCursor(4, 1);
         lcd.print(" ");
-        }
-      if(test_secs < 0){
-        test_secs =0;
-        }
       }
-      
-//----------------------------------------      
-    if(selector_menu == 3){
-      //lcd.createChar(0,selected_option);
-      
-      
-      if(digitalRead(ok_button) == HIGH){
+      lcd.setCursor(0, 0);
+      lcd.print(" ");
+      lcd.setCursor(9, 0);
+      lcd.print(" ");
+      lcd.setCursor(0, 1);
+      lcd.print(">");
+      lcd.setCursor(9, 1);
+      lcd.print(" ");
+      break;
+    }
+
+    case TEST_RUN_MENU:
+    {
+      lcd.setCursor(0, 0);
+      lcd.print(" ");
+      lcd.setCursor(9, 0);
+      lcd.print(" ");
+      lcd.setCursor(0, 1);
+      lcd.print(" ");
+      lcd.setCursor(9, 1);
+      lcd.print(">");
+
+      if(lcd_key == btnSELECT)
+      {
         selector_menu++;
         delay(250);
-        //RUN THE TEST
+         //RUN THE TEST
         lcd.clear();
         lcd.setCursor(0, 0);
         lcd.print("STARTING TEST");
@@ -471,52 +547,7 @@ void loop() {
         selector_menu = 0;
         lcd.clear();
       }
-      }      
-//----------------------------------------
-    if(selector_menu == 0){
-      lcd.setCursor(0, 0);
-      lcd.write(0);
-      lcd.setCursor(9, 0);
-      lcd.print(" ");
-      lcd.setCursor(0, 1);
-      lcd.print(" ");
-      lcd.setCursor(10, 1);
-      lcd.print(" ");
-      }
-
-      if(selector_menu == 1){
-      lcd.setCursor(0, 0);
-      lcd.print(" ");
-      lcd.setCursor(9, 0);
-      lcd.write(0);
-      lcd.setCursor(0, 1);
-      lcd.print(" ");
-      lcd.setCursor(10, 1);
-      lcd.print(" ");
-      }
-
-      if(selector_menu == 2){
-      lcd.setCursor(0, 0);
-      lcd.print(" ");
-      lcd.setCursor(9, 0);
-      lcd.print(" ");
-      lcd.setCursor(0, 1);
-      lcd.write(0);
-      lcd.setCursor(10, 1);
-      lcd.print(" ");
-      }
-
-      if(selector_menu == 3){
-      lcd.setCursor(0, 0);
-      lcd.print(" ");
-      lcd.setCursor(9, 0);
-      lcd.print(" ");
-      lcd.setCursor(0, 1);
-      lcd.print(" ");
-      lcd.setCursor(10, 1);
-      lcd.write(0);
-      }
-      
-//----------------------------------------
-        
+      break;
+    }
   }
+}
