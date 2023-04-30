@@ -1,0 +1,7 @@
+{
+    "sketch": "main\\main.ino",
+    "board": "arduino:avr:uno",
+    "port": "COM3",
+    "output": "../build",
+    "intelliSenseGen": "global"
+}

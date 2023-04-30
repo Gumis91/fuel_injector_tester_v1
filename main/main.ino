@@ -9,12 +9,6 @@
 #define MAX_TEST_LENGTH 90
 #define MAX_FREQUENCY 130
 
-LiquidCrystal lcd(8, 9, 4, 5, 6, 7);           // select the pins used on the LCD panel
-
-// define some values used by the panel and buttons
-int lcd_key     = 0;
-int adc_key_in  = 0;
-
 #define btnRIGHT  0
 #define btnUP     1
 #define btnDOWN   2
@@ -26,6 +20,12 @@ int adc_key_in  = 0;
 #define DUTY_CYCLE_MENU  1
 #define TEST_LENGTH_MENU 2
 #define TEST_RUN_MENU    3
+
+LiquidCrystal lcd(8, 9, 4, 5, 6, 7);           // select the pins used on the LCD panel
+
+// define some values used by the panel and buttons
+int lcd_key     = 0;
+int adc_key_in  = 0;
 
 unsigned int dPin_pump = 11;
 unsigned int dPin_injector = 12;     
@@ -107,7 +107,6 @@ void loop()
         lcd.setCursor(5, 0);
         lcd.print(" ");
       }
-
       lcd.setCursor(0, 0);
       lcd.print(">");
       lcd.setCursor(9, 0);
@@ -299,11 +298,17 @@ void start_pump()
   
   digitalWrite(dPin_pump, HIGH);
 
-  for(int i = PUMP_PRIMING_TIME; i--; i==0)
+  for(int loop = PUMP_PRIMING_TIME; loop--; loop==0)
   {
     delay(1000);
     lcd.setCursor(0, 1);
-    lcd.print(i);
+    lcd.print(loop);
+
+    if(loop < 10)
+    {
+      lcd.setCursor(1, 1);
+      lcd.print(" ");
+    }
   }
 }
 
@@ -338,6 +343,7 @@ void run_injector(int secs, int hz, int rpm, int dc)
   lcd.print(secs);
   lcd.setCursor(2, 1);
   lcd.print("s");
+
   lcd.setCursor(5, 1);
   lcd.print(rpm);
   lcd.print("rpm ");
@@ -349,52 +355,46 @@ void run_injector(int secs, int hz, int rpm, int dc)
 
   do
   {
-    //Do a pulse of ms milisends in the injector and led pins
-    do_pulse(send_us_high);
-    
-    // and wait ms_low ms to the next pulse
-    wait_ms(send_us_low);
-
+    doPulse(send_us_high);
+    waitMs(send_us_low);
   }
-  while( (micros() < time_end ));
+  while((micros() < time_end ));
+
   lcd.clear();
 }
 
 // ------------------------------------------------------------------
 // this function generates a pulse. Recive the miliseconds of the duration and the pin trow th pulse has to be send
-void do_pulse(long int us_wait)
+void doPulse(long int us_wait)
 {  
   long int micros_init, micros_end;
-  long int i;
+  long int micros_current;
 
   micros_init = micros();  // Read the microseconds from the MCU
   micros_end = micros_init + us_wait; //Calculate when the end is
-
+  
   digitalWrite(dPin_injector, HIGH);
   digitalWrite(dPin_injector_led, HIGH);
 
   do 
   {
-    i = micros();
-  } while( i < micros_end);
+    micros_current = micros();
+  } while( micros_current < micros_end);
 
   digitalWrite(dPin_injector, LOW);
   digitalWrite(dPin_injector_led, LOW);
 }
 
-// ------------------------------------------------------------------
-// This function wait ms ms that you pass as an argumen
-void wait_ms(long int us_wait)
+void waitMs(long int us_wait)
 {  
   long int micros_wait;
   long int micros_init, micros_end;
-  long int i;
+  long int micros_current;
 
   micros_init = micros();  // Read the microseconds from the MCU
   micros_end = micros_init + us_wait; //Calculate when the end is
-
   do
   {
-    i = micros();
-  } while ( i < micros_end );
+    micros_current = micros();
+  } while ( micros_current < micros_end );
 }
